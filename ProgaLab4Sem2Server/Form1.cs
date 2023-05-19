@@ -6,26 +6,23 @@ namespace ProgaLab4Sem2Server
 {
     public partial class Form1 : Form
     {
-        Socket tcpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         IPAddress ip = IPAddress.Parse("127.0.0.1");
-        Socket client;
-        int port = 0;
+        int port = 49002;
+        TcpListener tcpListener = new TcpListener(IPAddress.Parse("127.0.0.1"), 49002);
+
         public Form1()
         {
+            tcpListener.Start();
             InitializeComponent();
         }
-        async private void Form1_Load(object sender, EventArgs e)
+        private void Form1_Load(object sender, EventArgs e)
         {
-
-            IPEndPoint ep = new IPEndPoint(IPAddress.Any, 49002);
-            tcpSocket.Bind(ep);
             ReceiveInformation();
         }
         async private void ReceiveInformation()
         {
-            
-            tcpSocket.Listen();
-            client = await tcpSocket.AcceptAsync();
+            using TcpClient tcpClient = await tcpListener.AcceptTcpClientAsync();
+            NetworkStream stream = tcpClient.GetStream();
             var responseBytes = new byte[512];
             var builder = new StringBuilder();
             int bytes;
@@ -34,9 +31,9 @@ namespace ProgaLab4Sem2Server
             StreamReader reader;
             do
             {
-                bytes = await client.ReceiveAsync(responseBytes);
+                bytes = await stream.ReadAsync(responseBytes);
                 string responsePart = Encoding.UTF8.GetString(responseBytes, 0, bytes);
-                if(responsePart == "")
+                if (responsePart == "")
                 {
                     break;
                 }
@@ -48,35 +45,37 @@ namespace ProgaLab4Sem2Server
                     {
                         names += drive.Name + " ";
                     }
-                    await client.SendAsync(Encoding.UTF8.GetBytes(names));
+                    await stream.WriteAsync(Encoding.UTF8.GetBytes(names));
                 }
-                else if(responsePart.Contains(".txt"))
+                else if (responsePart.Contains(".txt"))
                 {
                     reader = new StreamReader(responsePart);
-                    await client.SendAsync(Encoding.UTF8.GetBytes(reader.ReadToEnd()));
+                    await stream.WriteAsync(Encoding.UTF8.GetBytes(reader.ReadToEnd()));
                 }
                 else
                 {
                     directoryInfo = new DirectoryInfo(responsePart);
                     string namesOfDirectories = "";
                     string namesOfFiles = "";
-                    foreach(DirectoryInfo directory in directoryInfo.GetDirectories())
+                    foreach (DirectoryInfo directory in directoryInfo.GetDirectories())
                     {
-                        namesOfDirectories+= directory.Name + " ";
+                        namesOfDirectories += directory.Name + ": ";
                     }
-                    foreach(FileInfo file in directoryInfo.GetFiles())
+                    foreach (FileInfo file in directoryInfo.GetFiles())
                     {
-                        namesOfFiles+= file.Name + " "; 
+                        namesOfFiles += file.Name + ": ";
                     }
-                    await client.SendAsync(Encoding.UTF8.GetBytes($"{namesOfDirectories+namesOfFiles}"));
+                    await stream.WriteAsync(Encoding.UTF8.GetBytes($"{namesOfDirectories + namesOfFiles}"));
                 }
-                textBox1.Text += "\nСервер получил "+responsePart;
+                textBox1.Text += "\tСервер получил " + responsePart;
             }
             while (bytes > 0);
-            client.Close();
             ReceiveInformation();
         }
 
-
+        private void Form1_FormClosed(object sender, FormClosedEventArgs e)
+        {
+            tcpListener.Stop();
+        }
     }
 }
